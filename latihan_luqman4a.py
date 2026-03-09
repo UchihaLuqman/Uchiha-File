@@ -11,7 +11,7 @@ st.set_page_config(page_title="Sistem Plot Lot Luqman", layout="wide")
 # Fungsi Tukar Koordinat (Contoh: RSO ke WGS84)
 # Ganti 'EPSG:3168' dengan kod sistem koordinat anda (3168 adalah RSO Malaya)
 def convert_to_latlon(e_list, n_list):
-    transformer = Transformer.from_crs("EPSG:3168", "EPSG:4326", always_xy=True)
+ transformer = Transformer.from_crs("EPSG:3168", "EPSG:4326", always_xy=True)
     lon, lat = transformer.transform(e_list, n_list)
     return lat, lon
 
@@ -80,3 +80,4 @@ if uploaded_file is not None:
 
     except Exception as err:
         st.error(f"Ralat: {err}")
+
