@@ -5,21 +5,20 @@ import folium
 from streamlit_folium import st_folium
 from pyproj import Transformer
 
-# --- 1. KONFIGURASI HALAMAN ---
+# --- 1. CONFIG ---
 st.set_page_config(page_title="Sistem Plot Lot Cassini Perak", layout="wide")
 
-# --- 2. FUNGSI PENUKARAN KOORDINAT (CASSINI PERAK -> WGS84) ---
+# --- 2. FUNGSI TUKAR KOORDINAT ---
 def convert_cassini_to_wgs84(e_list, n_list):
-    # EPSG:3381 = Cassini-Soldner (Perak)
+    # EPSG:3381 = Cassini Perak
     transformer = Transformer.from_crs("EPSG:3381", "EPSG:4326", always_xy=True)
     lon, lat = transformer.transform(e_list, n_list)
     return lat, lon
 
 st.title("🗺️ Sistem Visualisasi Lot Tanah (Cassini Perak)")
-st.write("Muat naik fail CSV untuk melihat lot di atas Google Satellite.")
 
-# --- 3. MUAT NAIK FAIL ---
-uploaded_file = st.file_uploader("Pilih fail CSV (Kolum: STN, E, N)", type=["csv"])
+# --- 3. UPLOAD FAIL ---
+uploaded_file = st.file_uploader("Muat naik fail CSV (STN, E, N)", type=["csv"])
 
 if uploaded_file is not None:
     try:
@@ -30,15 +29,13 @@ if uploaded_file is not None:
         n = df['N'].tolist()
         stn = df['STN'].tolist()
 
-        # A. Proses penukaran koordinat
+        # A. Tukar Koordinat
         lats, lons = convert_cassini_to_wgs84(e, n)
         points = list(zip(lats, lons))
         
-        # B. Titik tengah peta
+        # B. Setting Peta
         center_lat = np.mean(lats)
         center_lon = np.mean(lons)
-        
-        # C. Bina Peta Folium
         m = folium.Map(location=[center_lat, center_lon], zoom_start=19, tiles=None)
         
         folium.TileLayer(
@@ -49,18 +46,17 @@ if uploaded_file is not None:
             control = True
         ).add_to(m)
 
-        # D. Lukis Poligon
+        # C. Lukis Poligon
         folium.Polygon(
             locations=points,
             color="cyan",
             weight=3,
             fill=True,
             fill_color="yellow",
-            fill_opacity=0.2,
-            tooltip="Kawasan Lot"
+            fill_opacity=0.2
         ).add_to(m)
 
-        # E. Tambah Marker
+        # D. Letak Marker
         for i in range(len(points)):
             folium.CircleMarker(
                 location=points[i],
@@ -68,14 +64,13 @@ if uploaded_file is not None:
                 color="red",
                 fill=True,
                 fill_color="white",
-                fill_opacity=1,
                 popup=f"STN {stn[i]}"
             ).add_to(m)
 
-        # --- 4. PAPARAN PETA ---
+        # --- 4. PAPAR PETA ---
         st_folium(m, width="100%", height=600)
 
-        # --- 5. ANALISIS LUAS ---
+        # --- 5. KIRA LUAS ---
         def calculate_area(x, y):
             return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
         
@@ -84,10 +79,15 @@ if uploaded_file is not None:
         st.divider()
         c1, c2, c3 = st.columns(3)
         c1.metric("Bilangan Stesen", len(stn))
-        c2.metric("Luas (Meter Persegi)", f"{luas_m2:.2f} m²")
-        c3.metric("Luas (Ekar)", f"{(luas_m2 / 4046.86):.4f} ekar")
+        c2.metric("Luas (m²)", f"{luas_m2:.2f}")
+        c3.metric("Luas (Ekar)", f"{(luas_m2 / 4046.86):.4f}")
 
     except Exception as err:
         st.error(f"Ralat: {err}")
 else:
-    st.info("Sila muat naik fail CSV
+    st.info("Sila muat naik fail CSV anda.")
+
+# --- 6. SIDEBAR ---
+with st.sidebar:
+    st.header("Info Format")
+    st.write("Format: STN, E, N")
