@@ -6,18 +6,18 @@ from streamlit_folium import st_folium
 from pyproj import Transformer
 
 # --- 1. CONFIG ---
-st.set_page_config(page_title="Sistem Plot Lot GDM2000 MRSO", layout="wide")
+st.set_page_config(page_title="Sistem Plot Lot RSO Malaya", layout="wide")
 
-# --- 2. FUNGSI TUKAR KOORDINAT (GDM2000 MRSO -> WGS84) ---
-def convert_gdm2000_to_wgs84(e_list, n_list):
-    # EPSG:3375 = GDM2000 / Malaysia Rectified Skew Orthomorphic (MRSO)
+# --- 2. FUNGSI TUKAR KOORDINAT (RSO MALAYA -> WGS84) ---
+def convert_rso_to_wgs84(e_list, n_list):
+    # EPSG:3168 = Kertau (RSO) / RSO Malaya
     # EPSG:4326 = WGS84 (Lat/Lon)
-    transformer = Transformer.from_crs("EPSG:3375", "EPSG:4326", always_xy=True)
+    transformer = Transformer.from_crs("EPSG:3168", "EPSG:4326", always_xy=True)
     lon, lat = transformer.transform(e_list, n_list)
     return lat, lon
 
-st.title("🗺️ Sistem Visualisasi Lot Tanah (GDM2000 MRSO)")
-st.write("Sistem ini menggunakan unjuran GDM2000 MRSO untuk pemetaan satelit.")
+st.title("🗺️ Sistem Visualisasi Lot Tanah (RSO Malaya)")
+st.write("Sistem ini menggunakan unjuran RSO Malaya (Kertau) untuk pemetaan satelit.")
 
 # --- 3. UPLOAD FAIL ---
 uploaded_file = st.file_uploader("Muat naik fail CSV (Format: STN, E, N)", type=["csv"])
@@ -32,7 +32,7 @@ if uploaded_file is not None:
         stn = df['STN'].tolist()
 
         # A. Tukar Koordinat
-        lats, lons = convert_gdm2000_to_wgs84(e, n)
+        lats, lons = convert_rso_to_wgs84(e, n)
         points = list(zip(lats, lons))
         
         # B. Setting Peta (Zoom ke kawasan lot)
@@ -55,9 +55,9 @@ if uploaded_file is not None:
             color="yellow",      # Warna garisan
             weight=3,
             fill=True,
-            fill_color="cyan",   # Warna dalam lot
+            fill_color="orange", # Warna dalam lot (RSO guna orange untuk beza dengan GDM)
             fill_opacity=0.3,
-            tooltip="Kawasan Lot GDM2000"
+            tooltip="Kawasan Lot RSO Malaya"
         ).add_to(m)
 
         # D. Letak Marker Stesen
@@ -88,15 +88,14 @@ if uploaded_file is not None:
         c3.metric("Luas (Ekar)", f"{(luas_m2 / 4046.86):.4f}")
 
     except Exception as err:
-        st.error(f"Ralat: {err}. Pastikan fail CSV mempunyai kolum E dan N yang betul.")
+        st.error(f"Ralat: {err}. Sila pastikan koordinat adalah dalam format RSO Malaya.")
 else:
-    st.info("Sila muat naik fail CSV untuk melihat plot lot anda.")
+    st.info("Sila muat naik fail CSV untuk melihat plot lot RSO anda.")
 
 # --- 6. SIDEBAR ---
 with st.sidebar:
     st.header("Info Sistem")
-    st.info("Sistem: GDM2000 / MRSO")
-    st.write("Kod EPSG: **3375**")
+    st.info("Sistem: RSO Malaya (Kertau)")
+    st.write("Kod EPSG: **3168**")
     st.divider()
-    st.write("Contoh Data:")
-    st.code("STN,E,N\n1,424560,512340\n2,424580,512360")
+    st.write("Nota: Sistem ini sesuai untuk koordinat Easting/Northing dalam ratusan ribu (E: ~400,000, N: ~500,000).")
