@@ -6,41 +6,52 @@ from streamlit_folium import st_folium
 from pyproj import Transformer
 
 # --- 1. CONFIG ---
-st.set_page_config(page_title="Sistem Plot Lot RSO Malaya", layout="wide")
+st.set_page_config(page_title="Fix: Sistem RSO Malaya", layout="wide")
 
-# --- 2. FUNGSI TUKAR KOORDINAT (RSO MALAYA -> WGS84) ---
-def convert_rso_to_wgs84(e_list, n_list):
-    # EPSG:3168 = Kertau (RSO) / RSO Malaya
-    # EPSG:4326 = WGS84 (Lat/Lon)
+# --- 2. FUNGSI TUKAR KOORDINAT (DENGAN FIX TERBALIK) ---
+def convert_rso_to_wgs84(e_list, n_list, swap=False):
+    # EPSG:3168 (RSO) -> EPSG:4326 (WGS84)
+    # always_xy=True memastikan E=X, N=Y
     transformer = Transformer.from_crs("EPSG:3168", "EPSG:4326", always_xy=True)
-    lon, lat = transformer.transform(e_list, n_list)
+    
+    if swap:
+        # Jika user pilih untuk tukar posisi
+        lon, lat = transformer.transform(n_list, e_list)
+    else:
+        lon, lat = transformer.transform(e_list, n_list)
+        
     return lat, lon
 
 st.title("🗺️ Sistem Visualisasi Lot Tanah (RSO Malaya)")
-st.write("Sistem ini menggunakan unjuran RSO Malaya (Kertau) untuk pemetaan satelit.")
+st.warning("Jika lot muncul di laut, sila gunakan butang 'Tukar Posisi E/N' di sidebar.")
 
-# --- 3. UPLOAD FAIL ---
-uploaded_file = st.file_uploader("Muat naik fail CSV (Format: STN, E, N)", type=["csv"])
+# --- 3. SIDEBAR SETTING ---
+st.sidebar.header("Kawalan Koordinat")
+swap_coords = st.sidebar.checkbox("Tukar Posisi (E <-> N)", value=False)
+
+# --- 4. UPLOAD FAIL ---
+uploaded_file = st.file_uploader("Muat naik fail CSV (STN, E, N)", type=["csv"])
 
 if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
         df = df.dropna(subset=['E', 'N'])
         
-        e = df['E'].tolist()
-        n = df['N'].tolist()
+        e_raw = df['E'].tolist()
+        n_raw = df['N'].tolist()
         stn = df['STN'].tolist()
 
-        # A. Tukar Koordinat
-        lats, lons = convert_rso_to_wgs84(e, n)
+        # A. Tukar Koordinat dengan fungsi Fix
+        lats, lons = convert_rso_to_wgs84(e_raw, n_raw, swap=swap_coords)
         points = list(zip(lats, lons))
         
-        # B. Setting Peta (Zoom ke kawasan lot)
+        # B. Cek jika koordinat masuk akal (Bukan 0,0)
         center_lat = np.mean(lats)
         center_lon = np.mean(lons)
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=19, tiles=None)
         
-        # Google Satellite Layer
+        # C. Bina Peta
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=18, tiles=None)
+        
         folium.TileLayer(
             tiles = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
             attr = 'Google',
@@ -49,18 +60,17 @@ if uploaded_file is not None:
             control = True
         ).add_to(m)
 
-        # C. Lukis Poligon Lot
+        # D. Lukis Poligon
         folium.Polygon(
             locations=points,
-            color="yellow",      # Warna garisan
+            color="yellow",
             weight=3,
             fill=True,
-            fill_color="orange", # Warna dalam lot (RSO guna orange untuk beza dengan GDM)
-            fill_opacity=0.3,
-            tooltip="Kawasan Lot RSO Malaya"
+            fill_color="orange",
+            fill_opacity=0.3
         ).add_to(m)
 
-        # D. Letak Marker Stesen
+        # E. Marker
         for i in range(len(points)):
             folium.CircleMarker(
                 location=points[i],
@@ -68,34 +78,17 @@ if uploaded_file is not None:
                 color="red",
                 fill=True,
                 fill_color="white",
-                fill_opacity=1,
                 popup=f"STN {stn[i]}"
             ).add_to(m)
 
-        # --- 4. PAPAR PETA ---
+        # --- 5. PAPAR PETA ---
         st_folium(m, width="100%", height=600)
 
-        # --- 5. ANALISIS LUAS ---
-        def calculate_area(x, y):
-            return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-        
-        luas_m2 = calculate_area(np.array(e), np.array(n))
-        
-        st.divider()
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Bilangan Stesen", len(stn))
-        c2.metric("Luas (m²)", f"{luas_m2:.2f}")
-        c3.metric("Luas (Ekar)", f"{(luas_m2 / 4046.86):.4f}")
+        # --- 6. ANALISIS ---
+        area = 0.5 * np.abs(np.dot(e_raw, np.roll(n_raw, 1)) - np.dot(n_raw, np.roll(e_raw, 1)))
+        st.info(f"📐 Luas: {area:.2f} m² | Koordinat Pusat: {center_lat:.6f}, {center_lon:.6f}")
 
     except Exception as err:
-        st.error(f"Ralat: {err}. Sila pastikan koordinat adalah dalam format RSO Malaya.")
+        st.error(f"Ralat: {err}")
 else:
-    st.info("Sila muat naik fail CSV untuk melihat plot lot RSO anda.")
-
-# --- 6. SIDEBAR ---
-with st.sidebar:
-    st.header("Info Sistem")
-    st.info("Sistem: RSO Malaya (Kertau)")
-    st.write("Kod EPSG: **3168**")
-    st.divider()
-    st.write("Nota: Sistem ini sesuai untuk koordinat Easting/Northing dalam ratusan ribu (E: ~400,000, N: ~500,000).")
+    st.info("Sila muat naik fail CSV.")
