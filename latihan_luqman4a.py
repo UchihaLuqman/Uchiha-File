@@ -76,3 +76,4 @@ if uploaded_file is not None:
         st.error(f"Ralat semasa membaca fail: {err}")
 else:
     st.info("Sila muat naik fail CSV (Pastikan ada kolum 'STN', 'E', 'N') untuk melihat Lot.")
+
