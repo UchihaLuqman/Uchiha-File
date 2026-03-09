@@ -10,24 +10,21 @@ st.set_page_config(page_title="Sistem Plot Lot Cassini Perak", layout="wide")
 
 # --- 2. FUNGSI PENUKARAN KOORDINAT (CASSINI PERAK -> WGS84) ---
 def convert_cassini_to_wgs84(e_list, n_list):
-    """
-    EPSG:3381 adalah kod untuk Cassini-Soldner (Perak).
-    EPSG:4326 adalah kod untuk WGS84 (Latitude/Longitude).
-    """
-    # Pastikan 'always_xy=True' supaya urutan adalah (Easting, Northing)
+    # EPSG:3381 = Cassini-Soldner (Perak)
+    # EPSG:4326 = WGS84 (Lat/Lon)
     transformer = Transformer.from_crs("EPSG:3381", "EPSG:4326", always_xy=True)
     lon, lat = transformer.transform(e_list, n_list)
     return lat, lon
 
 st.title("🗺️ Sistem Visualisasi Lot Tanah (Cassini Perak)")
-st.write("Sistem ini menukarkan koordinat Cassini Perak ke paparan Google Satellite secara automatik.")
+st.write("Sila muat naik fail CSV untuk melihat lot di atas Google Satellite.")
 
 # --- 3. MUAT NAIK FAIL ---
 uploaded_file = st.file_uploader("Muat naik fail CSV (Pastikan ada kolum STN, E, N)", type=["csv"])
 
 if uploaded_file is not None:
     try:
-        # Baca Data
+        # Membaca data CSV
         df = pd.read_csv(uploaded_file)
         df = df.dropna(subset=['E', 'N'])
         
@@ -35,18 +32,18 @@ if uploaded_file is not None:
         n = df['N'].tolist()
         stn = df['STN'].tolist()
 
-        # A. Tukar ke Lat/Lon
+        # A. Proses penukaran koordinat
         lats, lons = convert_cassini_to_wgs84(e, n)
         points = list(zip(lats, lons))
         
-        # B. Tentukan Pusat Peta
+        # B. Tentukan titik tengah untuk fokus peta
         center_lat = np.mean(lats)
         center_lon = np.mean(lons)
         
-        # C. Bina Peta Folium (Zoom 19 untuk paparan dekat)
+        # C. Bina Peta Folium
         m = folium.Map(location=[center_lat, center_lon], zoom_start=19, tiles=None)
         
-        # Masukkan Layer Google Satellite
+        # Masukkan Google Satellite Layer
         folium.TileLayer(
             tiles = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
             attr = 'Google',
@@ -55,21 +52,53 @@ if uploaded_file is not None:
             control = True
         ).add_to(m)
 
-        # D. Lukis Poligon Lot Tanah
+        # D. Lukis Poligon Lot (Sempadan)
         folium.Polygon(
             locations=points,
-            color="cyan",      # Warna garisan sempadan
+            color="cyan",
             weight=3,
             fill=True,
-            fill_color="yellow", # Warna dalam lot
+            fill_color="yellow",
             fill_opacity=0.2,
-            tooltip="Kawasan Lot (Cassini Perak)"
+            tooltip="Kawasan Lot Cassini Perak"
         ).add_to(m)
 
-        # E. Letak Marker untuk setiap Stesen (STN)
-        for i, (lat, lon) in enumerate(points):
+        # E. Tambah Marker Bulatan untuk setiap Stesen (STN)
+        for i in range(len(points)):
             folium.CircleMarker(
-                location=[lat, lon],
-                radius=4,
+                location=points[i],
+                radius=5,
                 color="red",
-                fill
+                fill=True,
+                fill_color="white",
+                fill_opacity=1,
+                popup=f"STN {stn[i]}"
+            ).add_to(m)
+
+        # --- 4. PAPARAN PETA ---
+        st.subheader("📍 Visualisasi Lot Tanah")
+        st_folium(m, width="100%", height=600)
+
+        # --- 5. ANALISIS DATA ---
+        def calculate_area(x, y):
+            return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+        
+        luas_m2 = calculate_area(np.array(e), np.array(n))
+        
+        st.divider()
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Jumlah Stesen", len(stn))
+        with col2:
+            st.metric("Luas (Meter Persegi)", f"{luas_m2:.2f} m²")
+        with col3:
+            st.metric("Luas (Ekar)", f"{(luas_m2 / 4046.86):.4f} ekar")
+
+    except Exception as err:
+        st.error(f"Ralat dikesan: {err}")
+else:
+    st.info("Menunggu muat naik fail CSV...")
+
+# --- 6. PETUNJUK FORMAT ---
+with st.sidebar:
+    st.header("Format CSV
