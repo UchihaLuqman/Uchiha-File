@@ -1,79 +1,82 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+import folium
+from streamlit_folium import st_folium
+from pyproj import Transformer
 
-# 1. Konfigurasi Halaman
+# --- CONFIG ---
 st.set_page_config(page_title="Sistem Plot Lot Luqman", layout="wide")
 
-st.title("🗺️ Sistem Visualisasi Lot Tanah (Poligon)")
-st.write("Sila muat naik fail CSV koordinat anda untuk membina pelan lot.")
+# Fungsi Tukar Koordinat (Contoh: RSO ke WGS84)
+# Ganti 'EPSG:3168' dengan kod sistem koordinat anda (3168 adalah RSO Malaya)
+def convert_to_latlon(e_list, n_list):
+    transformer = Transformer.from_crs("EPSG:3168", "EPSG:4326", always_xy=True)
+    lon, lat = transformer.transform(e_list, n_list)
+    return lat, lon
 
-# 2. Fungsi Muat Naik Fail (Dinamik)
+st.title("🗺️ Sistem Visualisasi Lot Tanah (Google Satellite)")
+
 uploaded_file = st.file_uploader("Pilih fail CSV koordinat", type=["csv"])
 
 if uploaded_file is not None:
     try:
-        # Membaca fail yang dimuat naik
         df = pd.read_csv(uploaded_file)
-        
-        # Buang baris kosong
         df = df.dropna(subset=['E', 'N'])
-
-        # 3. Paparan Data di Sidebar
-        st.sidebar.header("Data Koordinat Lot")
-        st.sidebar.dataframe(df)
-
-        # 4. Ambil List Koordinat
+        
         e = df['E'].tolist()
         n = df['N'].tolist()
         stn = df['STN'].tolist()
 
-        # 5. Bina Grafik Lot
-        st.subheader("Pelan Lot Tanah (Bina Poligon)")
-        fig, ax = plt.subplots(figsize=(10, 8))
+        # 1. Tukar Koordinat untuk Peta
+        lats, lons = convert_to_latlon(e, n)
+        points = list(zip(lats, lons))
+        center_lat = np.mean(lats)
+        center_lon = np.mean(lons)
 
-        # A. Gabungkan data untuk tutup poligon (Bina semula dari STN 1)
-        e_closed = e + [e[0]]
-        n_closed = n + [n[0]]
-
-        # B. Lukis Sempadan Lot (Hitam)
-        ax.plot(e_closed, n_closed, color='black', marker='o', markersize=8, linewidth=2, label='Sempadan Lot')
+        # 2. Bina Peta Folium
+        # Layer Google Satellite menggunakan custom tile
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=18, tiles=None)
         
-        # C. Garis Penutup (Merah Putus-putus untuk menunjukkan sambungan akhir ke awal)
-        ax.plot([e[-1], e[0]], [n[-1], n[0]], color='red', linestyle='--', linewidth=2, label='Garis Penutup')
+        google_satellite = folium.TileLayer(
+            tiles = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+            attr = 'Google',
+            name = 'Google Satellite',
+            overlay = False,
+            control = True
+        ).add_to(m)
 
-        # D. Warnakan Lot (Warna hijau muda menandakan kawasan Lot yang berjaya dibina)
-        ax.fill(e_closed, n_closed, color='green', alpha=0.2)
+        # 3. Lukis Poligon Lot
+        folium.Polygon(
+            locations=points,
+            color="yellow",
+            weight=3,
+            fill=True,
+            fill_color="green",
+            fill_opacity=0.2,
+            tooltip="Kawasan Lot"
+        ).add_to(m)
 
-        # 6. Label Stesen
-        for i in range(len(stn)):
-            ax.annotate(f"  STN {int(stn[i])}", (e[i], n[i]), 
-                        fontsize=12, fontweight='bold', verticalalignment='bottom')
+        # 4. Tambah Marker Stesen
+        for i, (lat, lon) in enumerate(points):
+            folium.CircleMarker(
+                location=[lat, lon],
+                radius=4,
+                color="red",
+                fill=True,
+                tooltip=f"STN {int(stn[i])}"
+            ).add_to(m)
 
-        # 7. Pengaturan Tampilan
-        ax.set_xlabel('Easting (E)')
-        ax.set_ylabel('Northing (N)')
-        ax.set_aspect('equal') # PENTING: Supaya bentuk lot tepat (tidak herot)
-        ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend()
-        
-        st.pyplot(fig)
+        # 5. Paparkan Peta di Streamlit
+        st.subheader("Peta Satelit Lot Tanah")
+        st_folium(m, width="100%", height=600)
 
-        # 8. Info Penutupan & Luas
+        # 6. Kira Luas (Guna formula Shoelace anda)
         def calculate_area(x, y):
             return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
         
         luas = calculate_area(np.array(e), np.array(n))
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.success(f"✅ Lot berjaya dibina dari {len(stn)} stesen.")
-        with col2:
-            st.info(f"📐 Estimasi Luas Lot: {luas:.3f} unit persegi")
+        st.info(f"📐 Estimasi Luas Lot: {luas:.3f} unit persegi")
 
     except Exception as err:
-        st.error(f"Ralat semasa membaca fail: {err}")
-else:
-    st.info("Sila muat naik fail CSV (Pastikan ada kolum 'STN', 'E', 'N') untuk melihat Lot.")
-
+        st.error(f"Ralat: {err}")
